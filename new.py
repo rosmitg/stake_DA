@@ -11,7 +11,7 @@ st.set_page_config(page_title="AskStake AI", layout="wide")
 st.title("💬 AskStake — Hybrid LLM-Powered Data Assistant")
 
 # --- OpenAI setup ---
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+openai.api_key = st.secrets["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"]
 
 # --- Connect to DB ---
 conn = sqlite3.connect("stake_cleaned_dataset.db", check_same_thread=False)
