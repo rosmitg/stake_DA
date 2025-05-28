@@ -44,38 +44,26 @@ def suggest_visualization(df, key_prefix=""):
 
 # --- Sanitize SQL to avoid CTE/table conflicts ---
 def sanitize_sql(sql_code):
-    """
-    Renames CTEs that conflict with table names and replaces all their references.
-    """
-    conflict_names = {
-        "trades": "cte_trades",
-        "transactions": "cte_transactions",
-        "revenue": "cte_revenue",
-        "website_events": "cte_events",
-        "obt_user": "cte_users",
-        "withdrawals": "cte_withdrawals",
-        "fundings": "cte_fundings"
+    real_tables = {
+        "trades", "transactions", "revenue", "website_events", "obt_user",
+        "withdrawals", "fundings"
     }
-
     declared_ctes = []
 
     def rename_cte(match):
         cte_name = match.group(1)
-        new_name = conflict_names.get(cte_name.lower(), f"cte_{cte_name}")
-        declared_ctes.append((cte_name, new_name))
-        return match.group(0).replace(cte_name, new_name, 1)
+        safe_name = f"cte_{cte_name}"
+        declared_ctes.append((cte_name, safe_name))
+        return match.group(0).replace(cte_name, safe_name, 1)
 
-    # Rename CTE declarations
     sql_code = re.sub(r"\bWITH\s+(\w+)\s+AS\s+\(", rename_cte, sql_code, flags=re.IGNORECASE)
-    sql_code = re.sub(r"\b,\s*(\w+)\s+AS\s+\(", rename_cte, sql_code, flags=re.IGNORECASE)
+    sql_code = re.sub(r",\s*(\w+)\s+AS\s+\(", rename_cte, sql_code, flags=re.IGNORECASE)
 
-    # Replace all downstream references to renamed CTEs
-    for old, new in declared_ctes:
-        if old != new:
-            sql_code = re.sub(rf"\b{old}\b", new, sql_code, flags=re.IGNORECASE)
+    for original, new in declared_ctes:
+        if original != new:
+            sql_code = re.sub(rf"\b{original}\b", new, sql_code, flags=re.IGNORECASE)
 
     return sql_code
-
 
 # --- LLM Function ---
 def ask_llm(question):
@@ -147,6 +135,16 @@ for idx, (user_q, sql_q, result) in enumerate(reversed(st.session_state.history)
         st.code(sql_q, language="sql")
     if isinstance(result, pd.DataFrame):
         st.dataframe(result)
+
+        # ✅ Download button for CSV
+        csv = result.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="⬇️ Download result as CSV",
+            data=csv,
+            file_name=f"stake_query_result_{idx}.csv",
+            mime='text/csv'
+        )
+
         if not result.empty and result.shape[1] >= 2:
             suggest_visualization(result, key_prefix=f"viz_{idx}")
     else:

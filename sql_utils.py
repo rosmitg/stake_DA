@@ -2,38 +2,39 @@ import re
 import openai
 from config import OPENAI_API_KEY
 
-openai.api_key = OPENAI_API_KEY
+#openai.api_key = OPENAI_API_KEY
 
 def is_sql(text):
     return text.strip().lower().startswith(("select", "with", "insert", "update", "delete"))
 
 def sanitize_sql(sql_code):
-    conflict_names = {
-        "trades": "cte_trades",
-        "transactions": "cte_transactions",
-        "revenue": "cte_revenue",
-        "website_events": "cte_events",
-        "obt_user": "cte_users",
-        "withdrawals": "cte_withdrawals",
-        "fundings": "cte_fundings"
+    """
+    Renames ALL CTEs safely to avoid conflicts with real tables.
+    """
+    real_tables = {
+        "trades", "transactions", "revenue", "website_events", "obt_user",
+        "withdrawals", "fundings"
     }
 
     declared_ctes = []
 
     def rename_cte(match):
         cte_name = match.group(1)
-        new_name = conflict_names.get(cte_name.lower(), f"cte_{cte_name}")
-        declared_ctes.append((cte_name, new_name))
-        return match.group(0).replace(cte_name, new_name, 1)
+        safe_name = f"cte_{cte_name}"
+        declared_ctes.append((cte_name, safe_name))
+        return match.group(0).replace(cte_name, safe_name, 1)
 
+    # Rename CTE declarations: WITH ... AS ( and , ... AS (
     sql_code = re.sub(r"\bWITH\s+(\w+)\s+AS\s+\(", rename_cte, sql_code, flags=re.IGNORECASE)
-    sql_code = re.sub(r"\b,\s*(\w+)\s+AS\s+\(", rename_cte, sql_code, flags=re.IGNORECASE)
+    sql_code = re.sub(r",\s*(\w+)\s+AS\s+\(", rename_cte, sql_code, flags=re.IGNORECASE)
 
-    for old_name, new_name in declared_ctes:
-        if old_name != new_name:
-            sql_code = re.sub(rf"\b{old_name}\b", new_name, sql_code, flags=re.IGNORECASE)
+    # Replace every reference to old CTE names
+    for original, new in declared_ctes:
+        if original != new:
+            sql_code = re.sub(rf"\b{original}\b", new, sql_code, flags=re.IGNORECASE)
 
     return sql_code
+
 
 def ask_llm(question):
     prompt = f"""
